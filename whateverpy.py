@@ -28,6 +28,8 @@ ROOT = Path(__file__).resolve().parent
 
 def worker(connection, problem, config, trial):
     try:
+        from local_fcit import solve
+
         #Checking Validity
         env = vamp.problem_dict_to_vamp(problem)
         start, goals = problem["start"], problem["goals"]
@@ -43,7 +45,7 @@ def worker(connection, problem, config, trial):
         sampler.skip(trial * config["skip_stride"])
         connection.send(("ready", None))
         connection.recv()  # Parent starts the watchdog immediately before solve.
-        result = vamp.panda.fcit(start, goals, env, settings, sampler)
+        result = solve(start, goals, env, settings, sampler)
         result_data = {
             "solved": bool(result.solved), "status": "solved" if result.solved else "iteration_or_sample_limit",
             "planning_ms": result.nanoseconds / 1e6,

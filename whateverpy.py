@@ -1,8 +1,9 @@
-"""Run FCIT* on the original MotionBenchMaker Panda bookshelf_small scenes.
+"""Run FCIT* on the original MotionBenchMaker Panda scenes (bookshelf_small or cage).
 
 Run normally for problem 1, five trials and a Python 3D plot (PNG).
   python whateverpy.py --problem 57
   python whateverpy.py --all
+  python whateverpy.py --scene cage --all --no-replay
 
 Paper: https://www.kavrakilab.org/publications/wilson2025-fcit.pdf (Sec. IV).
 This reproduces the scene and initial-solution task, NOT Fig. 3 convergence.
@@ -24,6 +25,11 @@ import traceback
 import vamp
 
 ROOT = Path(__file__).resolve().parent
+# Scene name -> (problem file, results folder)
+SCENES = {
+    "bookshelf_small": (ROOT / "bookshelf_data" / "bookshelf_small.json", ROOT / "bookshelf_results"),
+    "cage": (ROOT / "cage_data" / "cage.json", ROOT / "cage_results"),
+}
 
 
 def worker(connection, problem, config, trial):
@@ -162,14 +168,26 @@ def replay(problem, path, destination):
                zlim=(center[2]-radius, center[2]+radius), xlabel="X (m)", ylabel="Y (m)", zlabel="Z (m)", title=title)
         ax.set_box_aspect((1,1,1))
         ax.view_init(elev=24, azim=-125)
-    fig.suptitle(f"Panda / bookshelf small / problem {problem['index']} — FCIT* initial path", fontsize=16)
+    fig.suptitle(f"Panda / {problem['problem'].replace('_', ' ')} / problem {problem['index']} — FCIT* initial path", fontsize=16)
     fig.supxlabel("Robot shown using VAMP collision spheres. Snapshots along the path, not execution time.", fontsize=10)
     fig.savefig(destination, dpi=160)
     plt.close(fig)
 
 
+def cpu_name():
+    """Processor model, so the results say which computer they come from."""
+    try:
+        for line in Path("/proc/cpuinfo").read_text().splitlines():
+            if line.startswith("model name"):
+                return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return platform.processor() or "unknown"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--scene", choices=sorted(SCENES), default="bookshelf_small", help="MotionBenchMaker scene")
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument("--problem", type=int, default=1, help="Original MBM problem index, 1..100 (default: 1)")
     selection.add_argument("--all", action="store_true", help="Run all 100 scenes, five trials each by default")
@@ -189,18 +207,19 @@ def main():
         version = importlib.metadata.version("vamp-planner")
     except importlib.metadata.PackageNotFoundError:
         parser.exit(1, "Run this script inside the working VAMP container, not Windows Anaconda.\n")
-    dataset = json.loads((ROOT / "bookshelf_data" / "bookshelf_small.json").read_text(encoding="utf-8"))
+    data_file, results_root = SCENES[args.scene]
+    dataset = json.loads(data_file.read_text(encoding="utf-8"))
     problems = dataset["problems"] if args.all else [p for p in dataset["problems"] if p["index"] == args.problem]
     if not problems:
         parser.error("Problem index must be between 1 and 100.")
     config = dict(timeout_seconds=args.timeout, batch_size=args.batch_size, max_iterations=args.max_iterations,
                   max_samples=args.max_samples, skip_stride=args.skip_stride, optimize=False, sampler="halton")
-    out = ROOT / "bookshelf_results" / time.strftime("%Y%m%d-%H%M%S")
+    out = results_root / time.strftime("%Y%m%d-%H%M%S")
     out.mkdir(parents=True, exist_ok=True)
     metadata = {
         "paper": "https://www.kavrakilab.org/publications/wilson2025-fcit.pdf", "dataset_source": dataset["source"],
         "archive_sha256": dataset["archive_sha256"], "vamp_version": version,
-        "platform": platform.platform(), "config": config, "trials_per_problem": args.trials,
+        "platform": platform.platform(), "cpu": cpu_name(), "scene": args.scene, "config": config, "trials_per_problem": args.trials,
         "problem_indices": [p["index"] for p in problems],
         "limitations": ["Initial-solution FCIT only; not the Fig. 3 anytime convergence experiment.",
                         "Exact paper seeds and tuning are unavailable; current-library defaults and Halton offsets are explicit.",
@@ -208,7 +227,7 @@ def main():
                         "Current VAMP and this computer differ from the paper's software/hardware; timings need not match."],
     }
     (out / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-    print(f"FCIT* / Panda / bookshelf_small: {len(problems)} problem(s), {args.trials} trials each", flush=True)
+    print(f"FCIT* / Panda / {args.scene}: {len(problems)} problem(s), {args.trials} trials each", flush=True)
     print(f"VAMP {version}; {args.timeout:g}s watchdog; batch={args.batch_size}; samples/iterations={args.max_samples}/{args.max_iterations}")
     print("Original MBM geometry and queries. Current-library defaults and Halton offsets; NOT an exact paper replication.", flush=True)
     rows = []
@@ -228,7 +247,7 @@ def main():
                 detail = f"{result['planning_ms']:.3f} ms, path length {result['path_length']:.4f}" if result["solved"] else result["status"]
                 print(f"  Problem {problem['index']:03d}, trial {trial+1}: {detail}", flush=True)
                 if result["solved"] and not replay_saved and not args.no_replay:
-                    destination = out / f"bookshelf_small_{problem['index']:04d}.png"
+                    destination = out / f"{args.scene}_{problem['index']:04d}.png"
                     replay(problem, result["path"], destination)
                     print(f"  Python plot: {destination}", flush=True)
                     replay_saved = True

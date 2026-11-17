@@ -1,0 +1,30 @@
+{
+  "paper": "https://www.kavrakilab.org/publications/wilson2025-fcit.pdf",
+  "dataset_source": "https://github.com/KavrakiLab/vamp/blob/27cb9b66ebd8d101ce88d330f3b028398afc1cfa/resources/panda/problems.tar.bz2",
+  "archive_sha256": "4e1509e99c53da769ee6a338cf1173ecf601e4ec16f24081d3894ef358243b69",
+  "vamp_version": "0.6.4",
+  "planner": "local_fcit (compiled from fcit.hh)",
+  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.36",
+  "config": {
+    "timeout_seconds": 100.0,
+    "batch_size": 1000,
+    "max_iterations": 100000,
+    "max_samples": 100000,
+    "skip_stride": 100000,
+    "optimize": true,
+    "mode": "convergence",
+    "environment": "cage",
+    "sampler": "halton",
+    "memory_limit_mb": 2048
+  },
+  "trials_per_problem": 100,
+  "problem_indices": [
+    1
+  ],
+  "limitations": [
+    "Current machine, software, sampler offsets, and finite planner limits differ from the paper.",
+    "Convergence callbacks and path recovery contribute to timing.",
+    "Convergence trials stop at the time, sample/iteration, or peak-memory limit.",
+    "Partial worker-exit results can contain cost history without a returned path."
+  ]
+}

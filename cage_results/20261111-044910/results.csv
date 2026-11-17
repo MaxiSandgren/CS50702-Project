@@ -1,0 +1,3 @@
+problem,trial,halton_skip,solved,status,planning_ms,path_length,iterations
+1,1,0,True,solved,958.334848,10.249345779418945,5
+1,2,100000,True,solved,9682.744124,12.474994659423828,11

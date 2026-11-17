@@ -1,0 +1,18 @@
+{
+  "status": "in_progress",
+  "solved": true,
+  "path": [],
+  "path_available": false,
+  "improvements": [
+    {
+      "time_s": 0.983621751,
+      "cost": 10.249345779418945
+    }
+  ],
+  "planning_ms": 983.621751,
+  "path_length": 10.249345779418945,
+  "final_path_length": 10.249345779418945,
+  "solve_elapsed_ms": 984.8555240000678,
+  "worker_exit_code": null,
+  "memory_limit_mb": 2048
+}

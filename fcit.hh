@@ -1,6 +1,8 @@
 #pragma once
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <limits>
 #include <memory>
 #include <functional>
@@ -108,6 +110,16 @@ namespace vamp::planning
                 }
                 return stopped or std::chrono::duration<double>(now - start_time).count() >= time_limit_seconds;
             };
+
+            // Batch log (CS572): one CSV line after every search batch, written only
+            // when FCIT_TRACE_PATH is set. Flushed per line so a killed run keeps it.
+            const char *trace_path = std::getenv("FCIT_TRACE_PATH");
+            std::FILE *trace = trace_path and *trace_path ? std::fopen(trace_path, "w") : nullptr;
+            if (trace)
+            {
+                std::fputs("time_s,batch,best_cost,num_samples,event\n", trace);
+                std::fflush(trace);
+            }
 
             PlanningResult<Robot> result;
             NN<dimension> roadmap;
@@ -355,6 +367,25 @@ namespace vamp::planning
                     }
                 }
 
+                // Batch log (CS572): best cost after this batch's search
+                const auto log_batch = [&](const char *event)
+                {
+                    if (not trace)
+                    {
+                        return;
+                    }
+                    const bool solved = parents[1] != std::numeric_limits<unsigned int>::max();
+                    // Same cost as the improvement callback when it is used
+                    const double cost = not solved ? std::numeric_limits<double>::infinity() :
+                                        on_improvement ? static_cast<double>(best_cost) :
+                                                         static_cast<double>(nodes[1].g);
+                    const double seconds =
+                        std::chrono::duration<double>(std::chrono::steady_clock::now() - start_time).count();
+                    std::fprintf(trace, "%.9f,%zu,%.9g,%zu,%s\n", seconds, iter, cost, nodes.size(), event);
+                    std::fflush(trace);
+                };
+                log_batch("batch");
+
                 // If we have a solution and just want an initial solution, break
                 if (not settings.optimize and parents[1] != std::numeric_limits<unsigned int>::max())
                 {
@@ -388,6 +419,21 @@ namespace vamp::planning
                     roadmap.insert(road_node);
                     new_samples++;
                 }
+            }
+
+            if (trace)
+            {
+                // Batch log (CS572): why the run ended
+                const char *reason = stopped                               ? "stopped" :
+                                     expired()                             ? "time_limit" :
+                                     nodes.size() >= settings.max_samples  ? "sample_limit" :
+                                     iter > settings.max_iterations        ? "iteration_limit" :
+                                                                             "initial_solution";
+                std::fprintf(
+                    trace, "%.9f,%zu,,%zu,end_%s\n",
+                    std::chrono::duration<double>(std::chrono::steady_clock::now() - start_time).count(),
+                    iter, nodes.size(), reason);
+                std::fclose(trace);
             }
 
             if (not on_improvement)

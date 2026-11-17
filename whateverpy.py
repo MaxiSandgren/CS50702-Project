@@ -34,6 +34,8 @@ import json
 
 import multiprocessing as mp
 
+import os
+
 from pathlib import Path
 
 import platform
@@ -58,6 +60,12 @@ def worker(connection, problem, config, trial):
     try:
         import vamp
         from local_fcit import solve
+        # Batch log: fcit.hh writes one CSV line per batch to this file.
+        if config.get("trace_dir"):
+            os.environ["FCIT_TRACE_PATH"] = str(
+                Path(config["trace_dir"]) / f"problem_{problem['index']:04d}_trial_{trial+1}.csv")
+        else:
+            os.environ.pop("FCIT_TRACE_PATH", None)
         env = vamp.problem_dict_to_vamp(problem)
         start, goals = problem["start"], problem["goals"]
         if not vamp.panda.validate(start, env) or not all(vamp.panda.validate(g, env) for g in goals):
@@ -366,6 +374,8 @@ def main():
 
     selection.add_argument("--all", action="store_true", help="Run all 100 scenes, five trials each by default")
 
+    selection.add_argument("--problems", default=None, help="Several problems, e.g. 1-20 or 1,5,9")
+
     parser.add_argument("--mode", choices=("initial", "convergence"), default="initial",
 
                         help="initial: all problems × 5 trials; convergence: one problem × 100 trials")
@@ -391,24 +401,31 @@ def main():
     parser.add_argument("--resume", type=Path, help="Resume a saved results folder")
     parser.add_argument("--memory-limit-mb", type=float, default=2048,
                         help="Peak convergence-worker RAM limit in MiB (default: 2048)")
+    parser.add_argument("--trace", action="store_true",
+                        help="Write one batch log CSV per trial to RESULTS/traces (for stopping_rules.py)")
     args = parser.parse_args()
     resume_metadata = None
     if args.resume is not None:
         args.resume = args.resume.resolve()
         resume_metadata = json.loads((args.resume / "metadata.json").read_text(encoding="utf-8"))
         saved = resume_metadata["config"]
-        for key in ("batch_size", "max_iterations", "max_samples", "skip_stride", "mode", "environment"):
+        for key in ("batch_size", "max_iterations", "max_samples", "skip_stride", "mode", "environment", "trace"):
             if key in saved:
                 setattr(args, key, saved[key])
         args.timeout = saved["timeout_seconds"]
         args.trials = resume_metadata["trials_per_problem"]
-        indices = resume_metadata["problem_indices"]
-        args.problem = indices[0] if len(indices) == 1 else None
-        args.all = len(indices) > 1
-    if args.mode == "convergence":
+        args.problem, args.all, args.problems = None, False, None
+    selected = None
+    if args.problems is not None:
+        try:
+            selected = sorted({i for part in args.problems.split(",")
+                               for i in (range(int(part.split("-")[0]), int(part.split("-")[-1]) + 1))})
+        except ValueError:
+            parser.error("--problems must look like 1-20 or 1,5,9.")
+    if args.mode == "convergence" and resume_metadata is None:
         if args.all:
-            parser.error("Convergence mode uses one problem. Select it with --problem.")
-        if args.problem is None:
+            parser.error("Convergence mode does not take --all. Use --problems, e.g. --problems 1-20.")
+        if args.problem is None and selected is None:
             args.problem = 1
     if args.trials is None:
         args.trials = 100 if args.mode == "convergence" else 5
@@ -418,6 +435,9 @@ def main():
         parser.error("Trials, timeout, batch size and max iterations must be positive.")
     if args.max_samples < args.batch_size + 2 or args.skip_stride < 0:
         parser.error("max-samples must be at least batch-size + 2; skip-stride cannot be negative.")
+    if args.trials > 1 and args.skip_stride < args.max_samples:
+        print(f"Warning: --skip-stride {args.skip_stride} is below --max-samples {args.max_samples}, "
+              "so trials can reuse each other's samples.", flush=True)
     from plot_success import main as plot_results
     try:
         version = importlib.metadata.version("vamp-planner")
@@ -428,6 +448,7 @@ def main():
         dataset_path = ROOT / f"{args.environment}.json"
     dataset = json.loads(dataset_path.read_text(encoding="utf-8"))
     indices = resume_metadata["problem_indices"] if resume_metadata else (
+        selected if selected is not None else
         [p["index"] for p in dataset["problems"]] if args.all or args.problem is None else [args.problem])
     problems = [p for p in dataset["problems"] if p["index"] in indices]
     if not problems or len(problems) != len(indices):
@@ -436,12 +457,14 @@ def main():
                   max_iterations=args.max_iterations, max_samples=args.max_samples,
                   skip_stride=args.skip_stride, optimize=args.mode == "convergence",
                   mode=args.mode, environment=args.environment, sampler="halton",
-                  memory_limit_mb=args.memory_limit_mb)
+                  memory_limit_mb=args.memory_limit_mb, trace=args.trace)
     out = args.resume if args.resume is not None else (
         ROOT / ("cage_results" if args.environment == "cage" else "bookshelf_results")
         / time.strftime("%Y%m%d-%H%M%S"))
     if args.resume is None:
         out.mkdir(parents=True, exist_ok=False)
+    if args.trace:
+        (out / "traces").mkdir(exist_ok=True)
     import fcntl
     run_lock = (out / ".run.lock").open("a")
     try:
@@ -481,6 +504,8 @@ def main():
             ],
         }
     save_trial(out / "metadata.json", metadata)
+    # Not saved in metadata, so a moved results folder still resumes correctly.
+    config["trace_dir"] = str(out / "traces") if args.trace else None
     print(f"FCIT* / Panda / {args.environment}: {len(problems)} problem(s), {args.trials} trials each", flush=True)
     print(f"VAMP {version}; {args.timeout:g}s budget; samples/iterations="
           f"{args.max_samples}/{args.max_iterations}; convergence RAM limit {args.memory_limit_mb:g} MiB", flush=True)
@@ -523,9 +548,11 @@ def main():
               f"{statistics.median(r['planning_ms'] for r in solved):.3f} ms; "
               f"path length {statistics.median(r['path_length'] for r in solved):.4f}")
     print(f"Results: {out}")
-    if args.mode == "convergence":
+    if args.mode == "convergence" and len(indices) == 1:
         from plot_convergence import main as plot_convergence
         plot_convergence([str(out)])
+    elif args.mode == "convergence":
+        print("Several problems: skipping the convergence plot. Run stopping_rules.py on this folder.")
     else:
         plot_results([str(out / "results.csv")])
 

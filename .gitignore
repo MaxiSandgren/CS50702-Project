@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Run bookkeeping written by whateverpy.py
+.run.lock
+*.checkpoint.json
+*.tmp
+
+# Build output
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+stopping_results/

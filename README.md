@@ -64,3 +64,31 @@ python whateverpy.py --resume cage_results/RUN_FOLDER
 Saved trial JSON files are reused, the CSV is rebuilt, and an unfinished trial
 is rerun. Resume loads the original experiment settings and records the new
 memory guard in its history. A folder lock prevents simultaneous resume runs.
+
+
+## Batch logs and stopping rules
+
+`fcit.hh` can write one CSV line after every batch (time, batch, best cost,
+samples) plus a last line saying why the run ended. After changing `fcit.hh`,
+rebuild `local_fcit.abi3.so` inside the container:
+
+```sh
+git clone --depth 1 --branch v0.6.4 https://github.com/KavrakiLab/vamp.git /tmp/vamp-src
+pip install /tmp/vamp-src -Ccmake.define.CMAKE_PROJECT_vamp_INCLUDE=$PWD/local_fcit.cmake
+```
+
+Log several problems with `--trace` (one CSV per trial in `RESULTS/traces`):
+
+```sh
+python whateverpy.py --mode convergence --environment cage --problems 1-20 --trials 5 --trace --skip-stride 1000000
+```
+
+Test the stopping rules on the logs, without rerunning the planner:
+
+```sh
+python stopping_rules.py cage_results/RUN_FOLDER bookshelf_results/RUN_FOLDER
+```
+
+Settings are picked on the odd problems and reported on the even ones. The
+script prints the best setting per rule and saves `stopping_rules_results.csv`,
+`stopping_rules_runs.csv` and `stopping_rules.png` in `stopping_results/`.

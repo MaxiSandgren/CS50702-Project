@@ -1,0 +1,2 @@
+problem,trial,halton_skip,solved,status,planning_ms,path_length,iterations
+1,1,0,True,time_limit,1326.344778,10.249345779418945,13

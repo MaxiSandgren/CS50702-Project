@@ -1,0 +1,18 @@
+{
+  "solved": false,
+  "status": "time_limit",
+  "planning_ms": null,
+  "iterations": 34,
+  "graph_size": [
+    32002,
+    0
+  ],
+  "path_length": null,
+  "path": [],
+  "improvements": [],
+  "solve_elapsed_ms": 100000.002114,
+  "final_path_length": null,
+  "problem": 1,
+  "trial": 7,
+  "halton_skip": 600000
+}

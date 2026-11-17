@@ -3,6 +3,8 @@
 #include <chrono>
 #include <limits>
 #include <memory>
+#include <functional>
+#include <unordered_set>
 
 #include <vamp/collision/environment.hh>
 #include <vamp/planning/nn.hh>
@@ -84,9 +86,28 @@ namespace vamp::planning
             const std::vector<Configuration> &goals,
             const collision::Environment<FloatVector<rake>> &environment,
             const RoadmapSettings<NeighborParamsT> &settings,
-            typename RNG::Ptr &rng) noexcept -> PlanningResult<Robot>
+            typename RNG::Ptr &rng,
+            double time_limit_seconds = std::numeric_limits<double>::infinity(),
+            const std::function<void(double, float)> &on_improvement = {},
+            const std::function<bool()> &stop_requested = {}) -> PlanningResult<Robot>
         {
             auto start_time = std::chrono::steady_clock::now();
+            auto next_stop_check = start_time;
+            bool stopped = false;
+            const auto expired = [&]()
+            {
+                if (time_limit_seconds == std::numeric_limits<double>::infinity() and not stop_requested)
+                {
+                    return false;
+                }
+                const auto now = std::chrono::steady_clock::now();
+                if (stop_requested and not stopped and now >= next_stop_check)
+                {
+                    stopped = stop_requested();
+                    next_stop_check = now + std::chrono::milliseconds(100);
+                }
+                return stopped or std::chrono::duration<double>(now - start_time).count() >= time_limit_seconds;
+            };
 
             PlanningResult<Robot> result;
             NN<dimension> roadmap;
@@ -107,6 +128,26 @@ namespace vamp::planning
 
             const auto state_index = [&states](unsigned int index) -> float *
             { return states.get() + index * Configuration::num_scalars_rounded; };
+            float best_cost = std::numeric_limits<float>::infinity();
+            const auto record_solution = [&]()
+            {
+                if (not on_improvement or parents.size() < 2 or
+                    parents[1] == std::numeric_limits<unsigned int>::max())
+                {
+                    return;
+                }
+                decltype(result.path) candidate;
+                utils::recover_path<Robot>(parents, state_index, candidate);
+                const auto cost = candidate.cost();
+                const auto seconds = std::chrono::duration<double>(
+                    std::chrono::steady_clock::now() - start_time).count();
+                if (cost < best_cost and seconds <= time_limit_seconds)
+                {
+                    best_cost = cost;
+                    result.path = std::move(candidate);
+                    on_improvement(seconds, cost);
+                }
+            };
 
             // Add start and goal to structures
             constexpr const unsigned int start_index = 0;
@@ -134,7 +175,7 @@ namespace vamp::planning
             std::vector<QueueEdge> open_set;
 
             // Search until Initial Solution
-            while (nodes.size() < settings.max_samples and iter++ < settings.max_iterations)
+            while (nodes.size() < settings.max_samples and iter++ < settings.max_iterations and not expired())
             {
                 for (auto i = 0U; i < goals.size(); ++i)
                 {
@@ -180,7 +221,7 @@ namespace vamp::planning
                             (*start_node.neighbor_iterator).distance});
                     start_node.neighbor_iterator++;
 
-                    while (not open_set.empty())
+                    while (not open_set.empty() and not expired())
                     {
                         pdqsort_branchless(
                             open_set.begin(),
@@ -247,6 +288,7 @@ namespace vamp::planning
                                             current_g =
                                                 parent_node.g + temp_config.distance(temp_config_self);
                                             current_node.g = current_g;
+                                            record_solution();
                                         }
                                         else
                                         {
@@ -320,7 +362,7 @@ namespace vamp::planning
                 }
 
                 for (auto new_samples = 0U;
-                     new_samples < settings.batch_size and nodes.size() < settings.max_samples;)
+                     new_samples < settings.batch_size and nodes.size() < settings.max_samples and not expired();)
                 {
                     auto rng_temp = rng->next();
 
@@ -348,8 +390,11 @@ namespace vamp::planning
                 }
             }
 
-            utils::recover_path<Robot>(parents, state_index, result.path);
-            result.cost = nodes[1].g;
+            if (not on_improvement)
+            {
+                utils::recover_path<Robot>(parents, state_index, result.path);
+            }
+            result.cost = on_improvement ? best_cost : nodes[1].g;
             result.nanoseconds = vamp::utils::get_elapsed_nanoseconds(start_time);
             result.iterations = iter;
             result.size.emplace_back(roadmap.size());

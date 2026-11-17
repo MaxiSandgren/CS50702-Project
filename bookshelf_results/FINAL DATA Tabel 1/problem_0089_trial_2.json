@@ -1,0 +1,8 @@
+{
+  "status": "timeout",
+  "solved": false,
+  "path": [],
+  "problem": 89,
+  "trial": 2,
+  "halton_skip": 100000
+}

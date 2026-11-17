@@ -1,0 +1,28 @@
+{
+  "status": "watchdog_timeout",
+  "solved": true,
+  "path": [],
+  "improvements": [
+    {
+      "time_s": 0.135899169,
+      "cost": 9.937411308288574
+    },
+    {
+      "time_s": 0.217003641,
+      "cost": 9.664228439331055
+    },
+    {
+      "time_s": 0.280590885,
+      "cost": 8.492244720458984
+    },
+    {
+      "time_s": 19.714379563,
+      "cost": 8.104455947875977
+    }
+  ],
+  "planning_ms": 135.89916899999997,
+  "path_length": 9.937411308288574,
+  "problem": 1,
+  "trial": 6,
+  "halton_skip": 500000
+}

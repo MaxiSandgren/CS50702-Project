@@ -1,0 +1,19 @@
+{
+  "solved": false,
+  "status": "memory_limit",
+  "planning_ms": null,
+  "iterations": 31,
+  "graph_size": [
+    29002,
+    0
+  ],
+  "path_length": null,
+  "path": [],
+  "improvements": [],
+  "solve_elapsed_ms": 66900.546654,
+  "final_path_length": null,
+  "memory_limit_mb": 5000.0,
+  "problem": 20,
+  "trial": 1,
+  "halton_skip": 0
+}

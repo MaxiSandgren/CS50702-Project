@@ -1,0 +1,26 @@
+{
+  "paper": "https://www.kavrakilab.org/publications/wilson2025-fcit.pdf",
+  "dataset_source": "https://github.com/KavrakiLab/vamp/blob/27cb9b66ebd8d101ce88d330f3b028398afc1cfa/resources/panda/problems.tar.bz2",
+  "archive_sha256": "4e1509e99c53da769ee6a338cf1173ecf601e4ec16f24081d3894ef358243b69",
+  "vamp_version": "0.6.4",
+  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.36",
+  "config": {
+    "timeout_seconds": 100.0,
+    "batch_size": 1000,
+    "max_iterations": 100000,
+    "max_samples": 100000,
+    "skip_stride": 100000,
+    "optimize": false,
+    "sampler": "halton"
+  },
+  "trials_per_problem": 5,
+  "problem_indices": [
+    1
+  ],
+  "limitations": [
+    "Initial-solution FCIT only; not the Fig. 3 anytime convergence experiment.",
+    "Exact paper seeds and tuning are unavailable; current-library defaults and Halton offsets are explicit.",
+    "100-second watchdog is external; finite sample/iteration caps may stop planning earlier.",
+    "Current VAMP and this computer differ from the paper's software/hardware; timings need not match."
+  ]
+}

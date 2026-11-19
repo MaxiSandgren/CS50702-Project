@@ -2,6 +2,9 @@
 __pycache__/
 *.py[cod]
 
+# Compiled FCIT*, built on each computer (build_fcit.sh)
+*.so
+
 # Run bookkeeping written by whateverpy.py
 .run.lock
 *.checkpoint.json
@@ -14,4 +17,3 @@ build/
 .DS_Store
 Thumbs.db
 desktop.ini
-stopping_results/

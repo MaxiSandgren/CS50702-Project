@@ -1,6 +1,6 @@
 """Plot first-solution results the way Fig. 1b (cage) and Fig. 2d (bookshelf small) of the FCIT* paper do.
 
-    python plot_initial.py cage_results/<run folder>/results.csv
+    python plot_initial.py results/runs/cage/<run folder>/results.csv
 
 Top:    share of trials that have found a solution by time t, with a 99 % Clopper-Pearson band.
 Bottom: the median first solution, drawn as a square at (median time, median path length)

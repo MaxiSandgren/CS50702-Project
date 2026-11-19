@@ -3,12 +3,12 @@
 Each rule replays a log batch by batch and only sees the batches so far, so it
 stops at the same batch it would have stopped at inside the planner.
 
-  python stopping_rules.py bookshelf_results/RUN_FOLDER cage_results/RUN_FOLDER
+  python stopping_rules.py results/runs/bookshelf_small/RUN_FOLDER results/runs/cage/RUN_FOLDER
 
 The folders must come from whateverpy.py --mode convergence --trace.
 Settings are picked on half the runs (tune) and reported on the other half (test).
 Best setting: most time saved with median extra path cost at most --max-extra-cost (2 %).
-Writes stopping_rules_results.csv, stopping_rules_runs.csv and stopping_rules.png to stopping_results/.
+Writes stopping_rules_results.csv, stopping_rules_runs.csv and stopping_rules.png to results/stopping_rules/.
 """
 
 import argparse
@@ -50,7 +50,7 @@ def load_runs(folders):
     for folder in folders:
         metadata = json.loads((folder / "metadata.json").read_text(encoding="utf-8"))
         scene = metadata["config"].get("environment", "bookshelf_small")
-        dataset = json.loads((ROOT / "bookshelf_data" / f"{scene}.json").read_text(encoding="utf-8"))
+        dataset = json.loads((ROOT / "data" / f"{scene}.json").read_text(encoding="utf-8"))
         problems = {p["index"]: p for p in dataset["problems"]}
         traces = sorted((folder / "traces").glob("problem_*_trial_*.csv"))
         if not traces:
@@ -172,7 +172,7 @@ def main(argv=None):
     parser.add_argument("folders", type=Path, nargs="+", help="Results folders with a traces/ subfolder")
     parser.add_argument("--max-extra-cost", type=float, default=2.0,
                         help="Best setting = most time saved with median extra cost at most this %% (default 2)")
-    parser.add_argument("--out", type=Path, default=Path("stopping_results"), help="Output folder (default: stopping_results)")
+    parser.add_argument("--out", type=Path, default=ROOT / "results" / "stopping_rules", help="Output folder (default: results/stopping_rules)")
     args = parser.parse_args(argv)
 
     runs = [run for run in load_runs(args.folders)]

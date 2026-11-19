@@ -36,6 +36,10 @@ import multiprocessing as mp
 
 import os
 
+import shutil
+
+import tempfile
+
 from pathlib import Path
 
 import platform
@@ -60,10 +64,11 @@ def worker(connection, problem, config, trial):
     try:
         import vamp
         from local_fcit import solve
-        # Batch log: fcit.hh writes one CSV line per batch to this file.
+        # Batch log: fcit.hh writes one CSV line per batch to this file. It is written
+        # inside the container (fast) and moved to the results folder after the trial.
         if config.get("trace_dir"):
             os.environ["FCIT_TRACE_PATH"] = str(
-                Path(config["trace_dir"]) / f"problem_{problem['index']:04d}_trial_{trial+1}.csv")
+                Path(config["trace_tmp"]) / f"problem_{problem['index']:04d}_trial_{trial+1}.csv")
         else:
             os.environ.pop("FCIT_TRACE_PATH", None)
         env = vamp.problem_dict_to_vamp(problem)
@@ -399,8 +404,8 @@ def main():
     parser.add_argument("--replay", dest="no_replay", action="store_false", help="Also save scene replays")
 
     parser.add_argument("--resume", type=Path, help="Resume a saved results folder")
-    parser.add_argument("--memory-limit-mb", type=float, default=2048,
-                        help="Peak convergence-worker RAM limit in MiB (default: 2048)")
+    parser.add_argument("--memory-limit-mb", type=float, default=None,
+                        help="Peak convergence-worker RAM limit in MiB (default: 2048, or the run's own limit on --resume)")
     parser.add_argument("--trace", action="store_true",
                         help="Write one batch log CSV per trial to RESULTS/traces (for stopping_rules.py)")
     args = parser.parse_args()
@@ -413,6 +418,8 @@ def main():
             if key in saved:
                 setattr(args, key, saved[key])
         args.timeout = saved["timeout_seconds"]
+        if args.memory_limit_mb is None:
+            args.memory_limit_mb = saved.get("memory_limit_mb") or 2048
         args.trials = resume_metadata["trials_per_problem"]
         args.problem, args.all, args.problems = None, False, None
     selected = None
@@ -429,6 +436,8 @@ def main():
             args.problem = 1
     if args.trials is None:
         args.trials = 100 if args.mode == "convergence" else 5
+    if args.memory_limit_mb is None:
+        args.memory_limit_mb = 2048
     if not 0 < args.memory_limit_mb < float("inf"):
         parser.error("The memory limit must be positive and finite.")
     if args.trials < 1 or args.timeout <= 0 or args.batch_size < 1 or args.max_iterations < 1:
@@ -443,7 +452,7 @@ def main():
         version = importlib.metadata.version("vamp-planner")
     except importlib.metadata.PackageNotFoundError:
         parser.exit(1, "Run this script inside the working VAMP container.\n")
-    dataset_path = ROOT / "bookshelf_data" / f"{args.environment}.json"
+    dataset_path = ROOT / "data" / f"{args.environment}.json"
     if not dataset_path.is_file():
         dataset_path = ROOT / f"{args.environment}.json"
     dataset = json.loads(dataset_path.read_text(encoding="utf-8"))
@@ -459,7 +468,7 @@ def main():
                   mode=args.mode, environment=args.environment, sampler="halton",
                   memory_limit_mb=args.memory_limit_mb, trace=args.trace)
     out = args.resume if args.resume is not None else (
-        ROOT / ("cage_results" if args.environment == "cage" else "bookshelf_results")
+        ROOT / "results" / "runs" / args.environment
         / time.strftime("%Y%m%d-%H%M%S"))
     if args.resume is None:
         out.mkdir(parents=True, exist_ok=False)
@@ -506,6 +515,9 @@ def main():
     save_trial(out / "metadata.json", metadata)
     # Not saved in metadata, so a moved results folder still resumes correctly.
     config["trace_dir"] = str(out / "traces") if args.trace else None
+    config["trace_tmp"] = str(Path(tempfile.gettempdir()) / "fcit_traces" / out.name)
+    if args.trace:
+        Path(config["trace_tmp"]).mkdir(parents=True, exist_ok=True)
     print(f"FCIT* / Panda / {args.environment}: {len(problems)} problem(s), {args.trials} trials each", flush=True)
     print(f"VAMP {version}; {args.timeout:g}s budget; samples/iterations="
           f"{args.max_samples}/{args.max_iterations}; convergence RAM limit {args.memory_limit_mb:g} MiB", flush=True)
@@ -522,6 +534,10 @@ def main():
                     continue
                 checkpoint = out / f".problem_{problem['index']:04d}_trial_{trial+1}.checkpoint.json"
                 result = run_trial(problem, config, trial, checkpoint_path=checkpoint)
+                if args.trace:
+                    name = f"problem_{problem['index']:04d}_trial_{trial+1}.csv"
+                    if (Path(config["trace_tmp"]) / name).is_file():
+                        shutil.move(Path(config["trace_tmp"]) / name, out / "traces" / name)
                 result.update(problem=problem["index"], trial=trial + 1, halton_skip=trial * args.skip_stride)
                 save_trial(out / f"problem_{problem['index']:04d}_trial_{trial+1}.json", result)
                 checkpoint.unlink(missing_ok=True)
